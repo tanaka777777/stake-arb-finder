@@ -541,9 +541,13 @@
                 <div class="status-dot"></div>
                 <span id="status-text">Connecting...</span>
             </div>
-            <button class="refresh-btn" onclick="refresh()" title="Refresh odds">
+            <button class="refresh-btn" onclick="refresh()" title="Refresh odds (uses cached events)">
                 <span class="icon">↻</span>
                 Refresh
+            </button>
+            <button class="refresh-btn" onclick="refreshEvents()" title="Refresh event list from API (slower)" style="background: var(--bg-hover);">
+                <span class="icon">🔄</span>
+                Events
             </button>
             <button class="refresh-btn" onclick="dumpComparisons()" title="Log all odds comparisons to browser console" style="background: #2a2a4a;">
                 <span class="icon">🔍</span>
@@ -880,8 +884,15 @@
                 .finally(() => setTimeout(() => btn.classList.remove('loading'), 1000));
         }
 
-        function dumpComparisons() {
+        function refreshEvents() {
             const btn = document.querySelectorAll('.refresh-btn')[1];
+            btn.classList.add('loading');
+            fetch('/api/refresh-events', { method: 'POST' })
+                .finally(() => setTimeout(() => btn.classList.remove('loading'), 5000));
+        }
+
+        function dumpComparisons() {
+            const btn = document.querySelectorAll('.refresh-btn')[2];
             btn.classList.add('loading');
             fetch('/api/debug/comparisons')
                 .then(r => r.json())

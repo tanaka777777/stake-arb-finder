@@ -21,7 +21,7 @@ from flask import Flask, Response, render_template, jsonify
 import config
 from models import Arb
 from adapters import get_adapter
-from sources import fetch_polymarket, fetch_stake, get_price_provider
+from sources import fetch_polymarket, fetch_stake, fetch_stake_odds_only, refresh_stake_events, get_price_provider
 from core import match_games, find_arbs
 from scripts.enrich_cache import load_asset_mapping_from_cache, enrich_cache as run_enrich_cache
 
@@ -592,17 +592,27 @@ def debounce_flush_worker():
                     log.error(f"Debounce flush error: {e}")
 
 
-def build_stake_cache():
+def build_stake_cache(refresh_events: bool = True):
     """
     Build initial Stake game cache by fetching from odds-api.io.
     This replaces the Thunderpick Puppeteer scraping.
+
+    Args:
+        refresh_events: If True, fetch fresh event list. If False, use cached events.
     """
     global cached_stake_games
 
     log.info("[STAKE] Building Stake game cache from odds-api.io...")
 
-    # Fetch Stake odds for all active sports
-    stake_raw = fetch_stake(config.ACTIVE_SPORTS)
+    # Optionally refresh event list first
+    if refresh_events:
+        log.info("[STAKE] Refreshing event list...")
+        event_counts = refresh_stake_events(config.ACTIVE_SPORTS)
+        for sport, count in event_counts.items():
+            log.info(f"[STAKE] {sport}: {count} events cached")
+
+    # Fetch Stake odds for all active sports (will use cached events)
+    stake_raw = fetch_stake(config.ACTIVE_SPORTS, use_cache=True)
     if not stake_raw:
         log.error("[STAKE] Failed to fetch Stake odds")
         return False
@@ -710,26 +720,26 @@ def event_driven_worker():
         recalculate_arbs_instant()
         log.info(f"[STARTUP] Initial calculation complete - {len(current_arbs)} arbs, {pipeline.games_matched} matched")
 
-    # Main loop: refresh Stake cache every 60s
+    # Main loop: refresh Stake odds every 60s (using cached events)
     while True:
         try:
             log.info("=" * 50)
-            log.info("Refreshing Stake cache...")
+            log.info("Refreshing Stake odds (using cached events)...")
 
             with state_lock:
                 pipeline.status = Status.FETCHING_STAKE
             notify_subscribers()
 
-            # Fetch Stake for all sports
-            stake_raw = fetch_stake(config.ACTIVE_SPORTS)
+            # Fetch odds only for cached events (no event refresh)
+            stake_raw = fetch_stake_odds_only(config.ACTIVE_SPORTS)
             if stake_raw:
                 for sport in config.ACTIVE_SPORTS:
                     adapter = get_adapter(sport)
                     stake_games = adapter.parse_stake(stake_raw, sport)
                     cached_stake_games[sport] = stake_games
-                    log.info(f"[{sport}] Stake cache updated: {len(stake_games)} games")
+                    log.info(f"[{sport}] Stake odds updated: {len(stake_games)} games")
             else:
-                log.warning("Stake fetch failed")
+                log.warning("Stake odds fetch failed")
 
             last_stake_fetch_time = datetime.now()
 
@@ -859,6 +869,32 @@ def api_refresh():
     log.info("Manual refresh triggered")
     threading.Thread(target=refresh_data).start()
     return jsonify({"status": "refreshing"})
+
+
+@app.route('/api/refresh-events', methods=['POST'])
+def api_refresh_events():
+    """Force refresh event list and rebuild caches."""
+    def do_refresh():
+        log.info("Manual event refresh triggered")
+        # Refresh events and rebuild caches
+        build_stake_cache(refresh_events=True)
+        build_match_cache()
+        # Re-enrich cache with Polymarket data
+        try:
+            run_enrich_cache()
+            mapping = load_asset_mapping_from_cache()
+            if mapping:
+                price_provider.load_asset_mapping(mapping)
+                with state_lock:
+                    pipeline.ws_assets_subscribed = len(mapping)
+        except Exception as e:
+            log.error(f"Cache enrichment failed: {e}")
+        # Recalculate arbs
+        recalculate_arbs_instant()
+        log.info("Event refresh complete")
+
+    threading.Thread(target=do_refresh).start()
+    return jsonify({"status": "refreshing events"})
 
 
 @app.route('/health')

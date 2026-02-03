@@ -36,6 +36,9 @@ LEAGUE_MAPPING = {
 # Current API key index (for rotation)
 _current_key_index = 0
 
+# Cached events per league (populated on startup or manual refresh)
+_cached_events: dict[str, list] = {}  # league_key -> list of events
+
 
 def _get_api_key() -> str:
     """Get current API key."""
@@ -140,6 +143,47 @@ def _fetch_odds_batch(event_ids: list[str]) -> list:
         return []
 
     return odds
+
+
+def refresh_events(leagues: list[str] = None) -> dict[str, int]:
+    """
+    Fetch and cache events for specified leagues.
+    Call this on startup or when manually refreshing event list.
+
+    Returns dict of league -> event count.
+    """
+    global _cached_events
+
+    if leagues is None:
+        leagues = list(LEAGUE_MAPPING.keys())
+
+    result = {}
+
+    for league_key in leagues:
+        if league_key not in LEAGUE_MAPPING:
+            continue
+
+        config = LEAGUE_MAPPING[league_key]
+        log.info(f"[{league_key}] Fetching events from odds-api.io...")
+
+        events = _fetch_events(config["sport"], config["league"])
+        _cached_events[league_key] = events
+        result[league_key] = len(events)
+
+        log.info(f"[{league_key}] Cached {len(events)} events")
+
+    return result
+
+
+def get_cached_event_ids(league_key: str) -> list[str]:
+    """Get cached event IDs for a league."""
+    events = _cached_events.get(league_key, [])
+    return [e["id"] for e in events]
+
+
+def get_cached_events(league_key: str) -> list:
+    """Get cached events for a league."""
+    return _cached_events.get(league_key, [])
 
 
 def _convert_nhl_3way_to_2way(home_3way: float, draw_3way: float, away_3way: float) -> tuple[float, float]:
@@ -279,12 +323,90 @@ def _extract_markets(event_odds: dict, league: str) -> dict | None:
     return result
 
 
-def fetch_odds(leagues: list[str] = None) -> dict | None:
+def fetch_odds_only(leagues: list[str] = None) -> dict | None:
+    """
+    Fetch odds for cached events only (no event refresh).
+    Use this for periodic updates after initial event cache is populated.
+
+    Args:
+        leagues: List of league keys (e.g., ["NBA", "NHL"]). If None, fetches all.
+
+    Returns same format as fetch_odds().
+    """
+    if leagues is None:
+        leagues = list(LEAGUE_MAPPING.keys())
+
+    result = {}
+
+    for league_key in leagues:
+        if league_key not in LEAGUE_MAPPING:
+            log.warning(f"Unknown league: {league_key}")
+            continue
+
+        config = LEAGUE_MAPPING[league_key]
+
+        # Use cached events
+        events = _cached_events.get(league_key, [])
+        if not events:
+            log.warning(f"[{league_key}] No cached events - call refresh_events() first")
+            result[league_key] = {"gamesCount": 0, "games": []}
+            continue
+
+        log.info(f"[{league_key}] Fetching odds for {len(events)} cached events...")
+
+        # Fetch odds in batches of 10
+        event_ids = [e["id"] for e in events]
+        all_odds = []
+
+        for i in range(0, len(event_ids), 10):
+            batch = event_ids[i:i + 10]
+            batch_odds = _fetch_odds_batch(batch)
+            all_odds.extend(batch_odds)
+
+            # Small delay between batches to avoid rate limits
+            if i + 10 < len(event_ids):
+                time.sleep(0.3)
+
+        log.info(f"[{league_key}] Got odds for {len(all_odds)} events")
+
+        # Process into games
+        games = []
+        for event_odds in all_odds:
+            markets = _extract_markets(event_odds, config["league"])
+            if not markets:
+                continue
+
+            stake_url = event_odds.get("urls", {}).get("Stake", "")
+            if not stake_url:
+                stake_url = f"https://stake.com/sports/{config['sport']}"
+
+            game = {
+                "id": str(event_odds.get("id", "")),
+                "homeTeam": event_odds.get("home", ""),
+                "awayTeam": event_odds.get("away", ""),
+                "startDate": event_odds.get("date", ""),
+                "url": stake_url,
+                "markets": markets,
+            }
+            games.append(game)
+
+        result[league_key] = {
+            "gamesCount": len(games),
+            "games": games,
+        }
+
+        log.info(f"[{league_key}] Processed {len(games)} games with Stake odds")
+
+    return result
+
+
+def fetch_odds(leagues: list[str] = None, use_cache: bool = True) -> dict | None:
     """
     Fetch Stake odds via odds-api.io.
 
     Args:
         leagues: List of league keys (e.g., ["NBA", "NHL"]). If None, fetches all.
+        use_cache: If True and events are cached, skip event fetch. If False, always fetch events.
 
     Returns same format as thunderpick.fetch_odds() so adapters work unchanged:
     {
@@ -318,18 +440,23 @@ def fetch_odds(leagues: list[str] = None) -> dict | None:
             continue
 
         config = LEAGUE_MAPPING[league_key]
-        log.info(f"[{league_key}] Fetching events from odds-api.io...")
 
-        # Step 1: Fetch events
-        events = _fetch_events(config["sport"], config["league"])
-        if not events:
-            log.warning(f"[{league_key}] No events found")
-            result[league_key] = {"gamesCount": 0, "games": []}
-            continue
+        # Check if we can use cached events
+        cached = _cached_events.get(league_key, [])
+        if use_cache and cached:
+            events = cached
+            log.info(f"[{league_key}] Using {len(events)} cached events")
+        else:
+            log.info(f"[{league_key}] Fetching events from odds-api.io...")
+            events = _fetch_events(config["sport"], config["league"])
+            _cached_events[league_key] = events  # Update cache
+            if not events:
+                log.warning(f"[{league_key}] No events found")
+                result[league_key] = {"gamesCount": 0, "games": []}
+                continue
+            log.info(f"[{league_key}] Found {len(events)} events")
 
-        log.info(f"[{league_key}] Found {len(events)} events")
-
-        # Step 2: Fetch odds in batches of 10
+        # Fetch odds in batches of 10
         event_ids = [e["id"] for e in events]
         all_odds = []
 
@@ -345,7 +472,7 @@ def fetch_odds(leagues: list[str] = None) -> dict | None:
 
         log.info(f"[{league_key}] Got odds for {len(all_odds)} events")
 
-        # Step 3: Process into games
+        # Process into games
         games = []
         for event_odds in all_odds:
             markets = _extract_markets(event_odds, config["league"])
@@ -355,7 +482,6 @@ def fetch_odds(leagues: list[str] = None) -> dict | None:
             # Build Stake URL
             stake_url = event_odds.get("urls", {}).get("Stake", "")
             if not stake_url:
-                # Construct URL if not provided
                 stake_url = f"https://stake.com/sports/{config['sport']}"
 
             game = {
