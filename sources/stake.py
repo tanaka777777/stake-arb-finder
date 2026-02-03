@@ -185,8 +185,25 @@ def _extract_markets(event_odds: dict, league: str) -> dict | None:
     stake_markets = event_odds["bookmakers"]["Stake"]
     result = {"moneyline": None, "spreads": [], "totals": []}
 
-    # For NHL, use 3-Way Result and convert to 2-way
-    if league == "usa-nhl":
+    # For all sports (including NHL), use ML market directly if available
+    # NHL has both "3-Way Result" and "ML" markets - use ML for accurate 2-way odds
+    ml_market = None
+    for market in stake_markets:
+        if market["name"] == "ML":
+            ml_market = market
+            break
+
+    if ml_market and ml_market.get("odds"):
+        odds_data = ml_market["odds"][0]
+        home = float(odds_data.get("home", 0))
+        away = float(odds_data.get("away", 0))
+        if home > 0 and away > 0:
+            result["moneyline"] = {
+                "home": {"odds": home},
+                "away": {"odds": away},
+            }
+    elif league == "usa-nhl":
+        # Fallback: convert 3-way to 2-way if ML not available
         threeway_market = None
         for market in stake_markets:
             if market["name"] == "3-Way Result":
