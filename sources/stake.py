@@ -18,6 +18,9 @@ API_KEYS = [
     os.environ.get("ODDS_API_KEY_1", "c13742b92619a901ee790a91db9f4d529478f05b014ab75d7d8f831132d1eedc"),
     os.environ.get("ODDS_API_KEY_2", "33e219b22b94361eadb6f7a96989c17aa8a52720cbbf51f7dd30558247560193"),
     os.environ.get("ODDS_API_KEY_3", "c194a85186dfb29ac25431afb10709a66f0b62cf6d31be36f5754735fe7d7432"),
+    os.environ.get("ODDS_API_KEY_4", "b897ea1890213e77f3dd93a7e9805419133ec9af539ef458f2f2865ab426196a"),
+    os.environ.get("ODDS_API_KEY_5", "f6a828279f15233822fd35084b42e43c7056f0b960eb0eb89ca44437fe5a996d"),
+    os.environ.get("ODDS_API_KEY_6", "d5f225920b0ca565ba553cc04a4b25331d74cc099918ecc706a51ccea12d43b4"),
 ]
 
 EVENTS_URL = "https://api2.odds-api.io/v3/events"
@@ -95,6 +98,7 @@ def _fetch_events(sport: str, league: str) -> list:
     params = {
         "sport": sport,
         "league": league,
+        "bookmakers": "Stake",
     }
 
     events = _api_request(EVENTS_URL, params)
