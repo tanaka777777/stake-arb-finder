@@ -545,6 +545,10 @@
                 <span class="icon">↻</span>
                 Refresh
             </button>
+            <button class="refresh-btn" onclick="dumpComparisons()" title="Log all odds comparisons to browser console" style="background: #2a2a4a;">
+                <span class="icon">🔍</span>
+                Debug
+            </button>
         </div>
     </header>
 
@@ -874,6 +878,49 @@
             btn.classList.add('loading');
             fetch('/api/refresh', { method: 'POST' })
                 .finally(() => setTimeout(() => btn.classList.remove('loading'), 1000));
+        }
+
+        function dumpComparisons() {
+            const btn = document.querySelectorAll('.refresh-btn')[1];
+            btn.classList.add('loading');
+            fetch('/api/debug/comparisons')
+                .then(r => r.json())
+                .then(data => {
+                    console.log('%c=== ODDS COMPARISONS ===', 'color: #00d4ff; font-size: 16px; font-weight: bold;');
+                    console.log(`Timestamp: ${data.timestamp}`);
+                    console.log(`Total matched games: ${data.total_games}`);
+                    console.log('');
+
+                    if (data.error) {
+                        console.error('Error:', data.error);
+                        return;
+                    }
+
+                    let totalArbs = 0;
+                    data.comparisons.forEach(game => {
+                        const swapNote = game.teams_swapped ? ' [SWAPPED]' : '';
+                        const comparisons = game.arbs || [];
+                        const profitableArbs = comparisons.filter(a => a.profit_pct > 0);
+                        totalArbs += profitableArbs.length;
+
+                        const headerColor = profitableArbs.length > 0 ? '#00ff88' : '#aaa';
+                        console.log(`%c${game.game} (${game.sport})${swapNote}`, `color: ${headerColor}; font-weight: bold;`);
+
+                        comparisons.forEach(arb => {
+                            const lineStr = arb.line != null ? ` ${arb.line}` : '';
+                            const isArb = arb.profit_pct > 0;
+                            const profitStr = isArb ? `+${arb.profit_pct.toFixed(2)}% ARB` : 'no arb';
+                            const color = isArb ? '#00ff88' : '#888';
+                            console.log(`  %c${arb.market_type}${lineStr}: Poly ${arb.poly_side} @${arb.poly_odds.toFixed(3)} vs Stake ${arb.stake_side} @${arb.stake_odds.toFixed(3)} → sum=${arb.implied_sum.toFixed(4)} (${profitStr})`, `color: ${color};`);
+                        });
+                        console.log('');
+                    });
+
+                    console.log(`%c=== TOTAL: ${totalArbs} profitable arbs ===`, 'color: #00d4ff; font-size: 14px;');
+                    console.log('Full data object:', data);
+                })
+                .catch(e => console.error('Failed to fetch comparisons:', e))
+                .finally(() => btn.classList.remove('loading'));
         }
 
         connect();

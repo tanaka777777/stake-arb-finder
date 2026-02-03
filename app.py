@@ -919,6 +919,127 @@ def api_enrich_cache():
     return jsonify({"status": "enriching cache"})
 
 
+@app.route('/api/debug/comparisons')
+def api_debug_comparisons():
+    """Return all odds comparisons for matched games - for console debugging."""
+    comparisons = []
+    debug_info = {"stake_games_count": {}, "cache_matches_count": {}, "match_failures": []}
+
+    if not cached_stake_games:
+        return jsonify({"error": "No Stake data cached", "comparisons": [], "debug": debug_info})
+
+    cache_path = Path("match_cache.json")
+    if not cache_path.exists():
+        return jsonify({"error": "No cache file", "comparisons": [], "debug": debug_info})
+
+    try:
+        cache = json.loads(cache_path.read_text(encoding="utf-8"))
+    except:
+        return jsonify({"error": "Cache read failed", "comparisons": [], "debug": debug_info})
+
+    for sport in config.ACTIVE_SPORTS:
+        stake_games = cached_stake_games.get(sport, [])
+        debug_info["stake_games_count"][sport] = len(stake_games)
+        if not stake_games:
+            continue
+
+        # Debug: Check what markets Stake games have
+        stake_markets_summary = {}
+        for g in stake_games[:3]:
+            stake_markets_summary[g.home_team] = list(g.markets.keys()) if g.markets else []
+        debug_info[f"{sport}_stake_markets_sample"] = stake_markets_summary
+
+        stake_games_by_name = {_normalize_name(g.home_team, g.away_team): g for g in stake_games}
+
+        sport_cache = cache.get(sport, {})
+        matches = sport_cache.get("matches", [])
+        debug_info["cache_matches_count"][sport] = len([m for m in matches if m.get("polymarket")])
+
+        for match in matches:
+            poly_data = match.get("polymarket")
+            if not poly_data:
+                continue
+
+            # Skip games that have already started
+            if _game_has_started(match.get("startDate")):
+                continue
+
+            game_id = poly_data["game_id"]
+            home_team = match.get("homeTeam", "")
+            away_team = match.get("awayTeam", "")
+
+            if not isinstance(home_team, str) or not isinstance(away_team, str):
+                debug_info["match_failures"].append({
+                    "sport": sport, "game_id": game_id,
+                    "reason": f"Team names not strings",
+                })
+                continue
+
+            # Get Poly prices from WS
+            prices = price_provider.get_all_prices_for_game(game_id)
+
+            # Find matching Stake game
+            match_key = _normalize_name(home_team, away_team)
+            stake_game = stake_games_by_name.get(match_key)
+
+            if not stake_game:
+                debug_info["match_failures"].append({
+                    "sport": sport, "game_id": game_id,
+                    "reason": "No Stake game match",
+                    "cache_key": match_key,
+                    "home_team": home_team, "away_team": away_team
+                })
+                continue
+
+            # Build poly game from WS prices and use find_arbs() for consistent logic
+            teams_swapped = poly_data.get("teams_swapped", False)
+            poly_game = _build_poly_game_from_ws(game_id, sport, match, prices)
+
+            if not poly_game:
+                debug_info["match_failures"].append({
+                    "sport": sport, "game_id": game_id,
+                    "reason": "No Poly prices available",
+                    "home_team": home_team
+                })
+                continue
+
+            # Use the same arb detection logic as the main app (return_all=True for debug)
+            game_arbs = find_arbs(poly_game, stake_game, teams_swapped, return_all=True)
+
+            game_comparison = {
+                "game": f"{away_team} @ {home_team}",
+                "sport": sport,
+                "game_id": game_id,
+                "teams_swapped": teams_swapped,
+                "arbs": [
+                    {
+                        "market_type": arb.market_type,
+                        "line": arb.line,
+                        "profit_pct": round(arb.profit_pct, 2),
+                        "poly_side": arb.poly_side,
+                        "poly_odds": round(arb.poly_odds, 3),
+                        "stake_side": arb.tp_side,
+                        "stake_odds": round(arb.tp_odds, 3),
+                        "implied_sum": round(1/arb.poly_odds + 1/arb.tp_odds, 4),
+                    }
+                    for arb in game_arbs
+                ],
+                "markets_checked": {
+                    "poly": list(poly_game.markets.keys()),
+                    "stake": list(stake_game.markets.keys()),
+                }
+            }
+
+            comparisons.append(game_comparison)
+
+    return jsonify({
+        "timestamp": datetime.now().isoformat(),
+        "total_games": len(comparisons),
+        "comparisons": comparisons,
+        "debug": debug_info
+    })
+
+
 @app.route('/api/debug/<sport>')
 def api_debug(sport):
     """Get raw debug data for a sport."""
