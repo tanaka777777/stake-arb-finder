@@ -98,7 +98,7 @@ def _fetch_events(sport: str, league: str) -> list:
     params = {
         "sport": sport,
         "league": league,
-        "bookmakers": "Stake",
+        "bookmaker": "Stake",
     }
 
     events = _api_request(EVENTS_URL, params)
