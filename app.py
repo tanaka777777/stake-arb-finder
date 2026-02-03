@@ -5,6 +5,10 @@ Uses WebSocket for real-time Polymarket prices.
 Stake odds fetched via odds-api.io (no Puppeteer needed).
 """
 
+# Load .env file before other imports
+from dotenv import load_dotenv
+load_dotenv()
+
 import json
 import logging
 import threading
@@ -22,6 +26,7 @@ import config
 from models import Arb
 from adapters import get_adapter
 from sources import fetch_polymarket, fetch_stake, fetch_stake_odds_only, refresh_stake_events, get_price_provider
+from sources.discord_bot import start_discord_bot, send_arb_alert
 from core import match_games, find_arbs
 from scripts.enrich_cache import load_asset_mapping_from_cache, enrich_cache as run_enrich_cache
 
@@ -253,6 +258,9 @@ def _update_arb_state(all_arbs: list[Arb], all_matched_no_arb: list[dict],
         for arb in new_arbs:
             arb_history[arb.id] = arb
             log.info(f"NEW ARB: {arb.game_display} | {arb.market_type} | +{arb.profit_pct:.2f}%")
+            # Send Discord notification for arbs above threshold
+            if arb.profit_pct >= config.DISCORD_MIN_PROFIT_PCT:
+                send_arb_alert(arb)
 
         # Check for changed profit on existing arbs (WS mode only)
         if is_ws_mode:
@@ -1157,6 +1165,9 @@ if __name__ == "__main__":
 
     log.info("Stake/Polymarket Arb Monitor starting...")
     log.info(f"Active sports: {config.ACTIVE_SPORTS}")
+
+    # Start Discord bot if configured
+    start_discord_bot()
 
     if args.rest:
         log.info("Starting in REST-only mode (forced)...")

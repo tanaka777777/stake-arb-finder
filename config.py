@@ -2,6 +2,8 @@
 Configuration for Stake/Polymarket Arb Monitor.
 """
 
+import os
+
 # Polling interval in seconds
 POLL_INTERVAL = 60
 
@@ -42,3 +44,8 @@ SPORTS = {
 
 # Active sports to monitor
 ACTIVE_SPORTS = ["NBA", "NHL", "NFL"]
+
+# Discord Bot Configuration
+DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN", "")
+DISCORD_CHANNEL_ID = os.environ.get("DISCORD_CHANNEL_ID", "")
+DISCORD_MIN_PROFIT_PCT = 1.0  # Minimum profit % to send Discord notifications

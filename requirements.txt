@@ -1,3 +1,5 @@
 Flask
 websocket-client
 requests
+discord.py
+python-dotenv
