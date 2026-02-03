@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arb Monitor - Stake</title>
+    <style>
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-card: #1a1a25;
+            --bg-hover: #22222f;
+            --accent: #00d4ff;
+            --accent-glow: rgba(0, 212, 255, 0.15);
+            --profit: #00ff88;
+            --profit-glow: rgba(0, 255, 136, 0.2);
+            --text-primary: #ffffff;
+            --text-secondary: #8888aa;
+            --text-muted: #555566;
+            --border: #2a2a3a;
+            --poly: #a855f7;
+            --stake: #f59e0b;  /* Stake orange */
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.5;
+        }
+
+        /* Header */
+        header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 20px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--accent), var(--stake));
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--profit);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .refresh-btn {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .refresh-btn:hover {
+            background: var(--bg-hover);
+            border-color: var(--accent);
+        }
+
+        .refresh-btn.loading .icon { animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Main */
+        main {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 30px 40px;
+        }
+
+        /* Stats */
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent), var(--profit));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 5px;
+        }
+
+        /* Pipeline Status */
+        .pipeline-status {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 15px 20px;
+            margin-bottom: 25px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .pipeline-status.fetching {
+            border-color: var(--accent);
+            box-shadow: 0 0 15px var(--accent-glow);
+        }
+
+        .pipeline-status.error {
+            border-color: #ff4444;
+            box-shadow: 0 0 15px rgba(255, 68, 68, 0.2);
+        }
+
+        .pipeline-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .pipeline-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--text-muted);
+        }
+
+        .pipeline-dot.idle { background: var(--profit); }
+        .pipeline-dot.fetching { background: var(--accent); animation: pulse 1s infinite; }
+        .pipeline-dot.error { background: #ff4444; }
+
+        .pipeline-text {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .pipeline-text strong {
+            color: var(--text-primary);
+        }
+
+        .pipeline-stats {
+            display: flex;
+            gap: 15px;
+            margin-left: auto;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .pipeline-stats span {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .pipeline-error {
+            width: 100%;
+            color: #ff4444;
+            font-size: 0.85rem;
+            margin-top: 5px;
+        }
+
+        /* Arb List */
+        .section-title {
+            font-size: 1.1rem;
+            color: var(--text-secondary);
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .section-title .badge {
+            background: var(--profit);
+            color: #000;
+            padding: 2px 10px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .arb-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .arb-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            overflow: hidden;
+            transition: all 0.3s;
+        }
+
+        .arb-card:hover {
+            border-color: var(--profit);
+            box-shadow: 0 0 30px var(--profit-glow);
+            transform: translateY(-2px);
+        }
+
+        .arb-header {
+            background: linear-gradient(90deg, var(--profit-glow), transparent);
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .arb-game {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .arb-meta {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .arb-type {
+            background: var(--bg-secondary);
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .arb-profit {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--profit);
+        }
+
+        .arb-body {
+            padding: 20px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .bet-card {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 15px;
+            border: 1px solid var(--border);
+        }
+
+        .bet-source {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .bet-source.poly { color: var(--poly); }
+        .bet-source.stake { color: var(--stake); }
+
+        .bet-source::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        .bet-side {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .bet-odds {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--accent);
+        }
+
+        .bet-stake {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-top: 8px;
+        }
+
+        .bet-stake span {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        .bet-link {
+            display: inline-block;
+            margin-top: 12px;
+            padding: 8px 16px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            text-decoration: none;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+
+        .bet-link:hover {
+            border-color: var(--accent);
+            background: var(--bg-hover);
+        }
+
+        .bet-link.poly:hover { border-color: var(--poly); }
+        .bet-link.stake:hover { border-color: var(--stake); }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 80px 40px;
+            color: var(--text-muted);
+        }
+
+        .empty-icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+
+        .empty-title {
+            font-size: 1.3rem;
+            color: var(--text-secondary);
+            margin-bottom: 10px;
+        }
+
+        /* Debug Section */
+        .debug-section {
+            margin-top: 40px;
+            border-top: 1px solid var(--border);
+            padding-top: 20px;
+        }
+
+        .debug-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            padding: 15px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            transition: all 0.2s;
+        }
+
+        .debug-header:hover {
+            background: var(--bg-hover);
+        }
+
+        .debug-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+
+        .debug-title .badge {
+            background: var(--text-muted);
+            color: var(--bg-primary);
+            padding: 2px 10px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .debug-toggle {
+            color: var(--text-muted);
+            font-size: 1.2rem;
+            transition: transform 0.3s;
+        }
+
+        .debug-toggle.expanded {
+            transform: rotate(180deg);
+        }
+
+        .debug-content {
+            display: none;
+            margin-top: 15px;
+        }
+
+        .debug-content.show {
+            display: block;
+        }
+
+        .matched-game {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .matched-game-info {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .matched-game-name {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .matched-game-sport {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .matched-game-markets {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .matched-game-links {
+            display: flex;
+            gap: 8px;
+        }
+
+        .matched-link {
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            text-decoration: none;
+            color: var(--text-primary);
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            transition: all 0.2s;
+        }
+
+        .matched-link:hover {
+            border-color: var(--accent);
+        }
+
+        .matched-link.poly:hover { border-color: var(--poly); }
+        .matched-link.stake:hover { border-color: var(--stake); }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 30px;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            header { padding: 15px 20px; flex-wrap: wrap; gap: 15px; }
+            main { padding: 20px; }
+            .arb-body { grid-template-columns: 1fr; }
+            .stats { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo">
+            <div class="logo-icon">⚡</div>
+            <span>Arb Monitor - Stake</span>
+        </div>
+        <div class="status">
+            <div class="status-item">
+                <div class="status-dot"></div>
+                <span id="status-text">Connecting...</span>
+            </div>
+            <button class="refresh-btn" onclick="refresh()" title="Refresh odds">
+                <span class="icon">↻</span>
+                Refresh
+            </button>
+        </div>
+    </header>
+
+    <main>
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-value" id="arb-count">-</div>
+                <div class="stat-label">Live Arbitrages</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="best-profit">-</div>
+                <div class="stat-label">Best Profit %</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="poll-interval">{{ poll_interval }}s</div>
+                <div class="stat-label">Update Interval</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="last-update">-</div>
+                <div class="stat-label">Last Update</div>
+            </div>
+        </div>
+
+        <!-- Pipeline Status -->
+        <div class="pipeline-status" id="pipeline-status">
+            <div class="pipeline-indicator">
+                <div class="pipeline-dot idle" id="pipeline-dot"></div>
+                <span class="pipeline-text" id="pipeline-text">Idle</span>
+            </div>
+            <div class="pipeline-stats" id="pipeline-stats">
+                <span>📊 <strong id="stat-poly">0</strong> Poly</span>
+                <span>🎰 <strong id="stat-stake">0</strong> Stake</span>
+                <span>🔗 <strong id="stat-matched">0</strong> Matched</span>
+            </div>
+            <div class="pipeline-error" id="pipeline-error" style="display: none;"></div>
+        </div>
+
+        <div class="section-title">
+            🔥 Live Opportunities <span class="badge" id="arb-badge">0</span>
+        </div>
+
+        <div class="arb-list" id="arb-list">
+            <div class="empty-state">
+                <div class="empty-icon">📡</div>
+                <div class="empty-title">Scanning for arbitrage...</div>
+                <p>Monitoring Polymarket & Stake for opportunities</p>
+            </div>
+        </div>
+
+        <!-- Debug Section: Matched games with no edge -->
+        <div class="debug-section">
+            <div class="debug-header" onclick="toggleDebug()">
+                <div class="debug-title">
+                    🔍 Matched Games (No Edge) <span class="badge" id="matched-badge">0</span>
+                </div>
+                <span class="debug-toggle" id="debug-toggle">▼</span>
+            </div>
+            <div class="debug-content" id="debug-content">
+                <div id="matched-list"></div>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        Arb Monitor • Polymarket ↔ Stake • Updates every {{ poll_interval }}s
+    </footer>
+
+    <script>
+        let eventSource;
+        let debugExpanded = false;
+        let seenArbIds = new Set();
+        let audioContext = null;
+
+        // Pleasant chime sound
+        function playChime() {
+            try {
+                if (!audioContext) {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+
+                const now = audioContext.currentTime;
+                const frequencies = [523.25, 659.25]; // C5, E5
+
+                frequencies.forEach((freq, i) => {
+                    const oscillator = audioContext.createOscillator();
+                    const gainNode = audioContext.createGain();
+
+                    oscillator.connect(gainNode);
+                    gainNode.connect(audioContext.destination);
+
+                    oscillator.frequency.value = freq;
+                    oscillator.type = 'sine';
+
+                    const startTime = now + (i * 0.15);
+                    gainNode.gain.setValueAtTime(0, startTime);
+                    gainNode.gain.linearRampToValueAtTime(0.3, startTime + 0.05);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + 0.5);
+
+                    oscillator.start(startTime);
+                    oscillator.stop(startTime + 0.5);
+                });
+            } catch (e) {
+                console.log('Audio not available:', e);
+            }
+        }
+
+        function checkForNewArbs(arbs) {
+            const currentIds = new Set(arbs.map(a => a.id));
+            let hasNew = false;
+
+            for (const arb of arbs) {
+                if (!seenArbIds.has(arb.id)) {
+                    hasNew = true;
+                    seenArbIds.add(arb.id);
+                }
+            }
+
+            for (const id of seenArbIds) {
+                if (!currentIds.has(id)) {
+                    seenArbIds.delete(id);
+                }
+            }
+
+            return hasNew;
+        }
+
+        function connect() {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+
+            eventSource = new EventSource('/events');
+
+            eventSource.onopen = () => {
+                document.getElementById('status-text').textContent = 'Live';
+            };
+
+            eventSource.onmessage = (e) => {
+                const data = JSON.parse(e.data);
+                updateUI(data);
+            };
+
+            eventSource.onerror = () => {
+                document.getElementById('status-text').textContent = 'Reconnecting...';
+                if (eventSource) {
+                    eventSource.close();
+                    eventSource = null;
+                }
+                setTimeout(connect, 3000);
+            };
+        }
+
+        function toggleDebug() {
+            debugExpanded = !debugExpanded;
+            document.getElementById('debug-content').classList.toggle('show', debugExpanded);
+            document.getElementById('debug-toggle').classList.toggle('expanded', debugExpanded);
+        }
+
+        function updatePipelineStatus(pipeline) {
+            if (!pipeline) return;
+
+            const container = document.getElementById('pipeline-status');
+            const dot = document.getElementById('pipeline-dot');
+            const text = document.getElementById('pipeline-text');
+            const errorEl = document.getElementById('pipeline-error');
+
+            dot.className = 'pipeline-dot';
+            container.className = 'pipeline-status';
+
+            const statusMap = {
+                'idle': { dot: 'idle', text: 'Idle', class: '' },
+                'fetching_polymarket': { dot: 'fetching', text: `Fetching Polymarket (${pipeline.current_sport})...`, class: 'fetching' },
+                'fetching_stake': { dot: 'fetching', text: `Fetching Stake (${pipeline.current_sport})...`, class: 'fetching' },
+                'processing': { dot: 'fetching', text: `Processing ${pipeline.current_sport}...`, class: 'fetching' },
+                'error': { dot: 'error', text: 'Error', class: 'error' },
+                'ws_connected': { dot: 'idle', text: 'WebSocket Connected', class: '' },
+                'ws_connecting': { dot: 'fetching', text: 'Connecting WebSocket...', class: 'fetching' },
+            };
+
+            const s = statusMap[pipeline.status] || statusMap['idle'];
+            dot.classList.add(s.dot);
+            text.innerHTML = s.text;
+            if (s.class) container.classList.add(s.class);
+
+            document.getElementById('stat-poly').textContent = pipeline.poly_games || 0;
+            document.getElementById('stat-stake').textContent = pipeline.tp_games || 0;
+            document.getElementById('stat-matched').textContent = pipeline.matched || 0;
+
+            const headerStatus = document.getElementById('status-text');
+            if (pipeline.status === 'idle' || pipeline.status === 'ws_connected') {
+                headerStatus.textContent = 'Live';
+            } else if (pipeline.status === 'error') {
+                headerStatus.textContent = 'Error';
+            } else {
+                headerStatus.textContent = 'Fetching...';
+            }
+
+            if (pipeline.last_error) {
+                errorEl.textContent = `⚠️ ${pipeline.last_error}`;
+                errorEl.style.display = 'block';
+            } else {
+                errorEl.style.display = 'none';
+            }
+        }
+
+        function updateUI(data) {
+            updatePipelineStatus(data.pipeline);
+
+            if (data.arbs && data.arbs.length > 0) {
+                if (checkForNewArbs(data.arbs)) {
+                    playChime();
+                }
+            }
+
+            document.getElementById('arb-count').textContent = data.count;
+            document.getElementById('arb-badge').textContent = data.count;
+
+            if (data.arbs.length > 0) {
+                const best = Math.max(...data.arbs.map(a => a.profit_pct));
+                document.getElementById('best-profit').textContent = best.toFixed(2) + '%';
+            } else {
+                document.getElementById('best-profit').textContent = '-';
+            }
+
+            if (data.last_update) {
+                const d = new Date(data.last_update);
+                document.getElementById('last-update').textContent = d.toLocaleTimeString();
+            }
+
+            const list = document.getElementById('arb-list');
+
+            if (data.arbs.length === 0) {
+                list.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">✨</div>
+                        <div class="empty-title">No arbitrage opportunities right now</div>
+                        <p>Markets are efficiently priced. Keep monitoring!</p>
+                    </div>
+                `;
+            } else {
+                list.innerHTML = data.arbs.map(arb => `
+                <div class="arb-card">
+                    <div class="arb-header">
+                        <div class="arb-game">${arb.game}</div>
+                        <div class="arb-meta">
+                            <span class="arb-type">${formatMarket(arb.market_type, arb.line)}</span>
+                            <span class="arb-profit">+${arb.profit_pct.toFixed(2)}%</span>
+                        </div>
+                    </div>
+                    <div class="arb-body">
+                        <div class="bet-card">
+                            <div class="bet-source poly">Polymarket</div>
+                            <div class="bet-side">${formatSide(arb.poly_side, arb.market_type, arb.line, null)}</div>
+                            <div class="bet-odds">${arb.poly_odds.toFixed(3)} <span style="color: var(--text-secondary); font-size: 0.8em;">(${Math.round(100 / arb.poly_odds)}¢)</span></div>
+                            ${arb.poly_size ? `<div class="bet-stake" style="color: var(--poly);">Liquidity: <span>$${(arb.poly_size * (1 / arb.poly_odds)).toFixed(0)}</span> (${Math.round(arb.poly_size)} shares)</div>` : ''}
+                            <div class="bet-stake">Stake: <span>${(100 * arb.poly_odds / (arb.poly_odds + arb.tp_odds)).toFixed(1)}%</span> of bankroll</div>
+                            ${arb.poly_url ? `<a href="${arb.poly_url}" target="_blank" class="bet-link poly">Open on Polymarket →</a>` : ''}
+                        </div>
+                        <div class="bet-card">
+                            <div class="bet-source stake">Stake</div>
+                            <div class="bet-side">${formatSide(arb.tp_side, arb.market_type, arb.line, arb.tp_line)}</div>
+                            <div class="bet-odds">${arb.tp_odds.toFixed(3)}</div>
+                            <div class="bet-stake">Stake: <span>${(100 * arb.tp_odds / (arb.poly_odds + arb.tp_odds)).toFixed(1)}%</span> of bankroll</div>
+                            ${arb.tp_url ? `<a href="${arb.tp_url}" target="_blank" class="bet-link stake">Open on Stake →</a>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+            }
+
+            const matchedCount = data.matched_count || 0;
+            document.getElementById('matched-badge').textContent = matchedCount;
+
+            const matchedList = document.getElementById('matched-list');
+            if (data.matched_no_arb && data.matched_no_arb.length > 0) {
+                matchedList.innerHTML = data.matched_no_arb.map(m => `
+                    <div class="matched-game">
+                        <div class="matched-game-info">
+                            <div class="matched-game-sport">${m.sport}</div>
+                            <div class="matched-game-name">${m.game}</div>
+                            <div class="matched-game-markets">
+                                Poly: ${m.poly_markets.join(', ') || 'none'} • Stake: ${m.tp_markets.join(', ') || 'none'}
+                            </div>
+                        </div>
+                        <div class="matched-game-links">
+                            ${m.poly_url ? `<a href="${m.poly_url}" target="_blank" class="matched-link poly">Polymarket</a>` : ''}
+                            ${m.tp_url ? `<a href="${m.tp_url}" target="_blank" class="matched-link stake">Stake</a>` : ''}
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                matchedList.innerHTML = '<p style="color: var(--text-muted); padding: 15px;">No matched games without edge yet.</p>';
+            }
+        }
+
+        function formatMarket(type, line) {
+            if (type === 'moneyline') return 'Moneyline';
+            if (type === 'spread') return `Spread ${line > 0 ? '+' : ''}${line}`;
+            if (type === 'total') return `Total ${line}`;
+            return type;
+        }
+
+        function formatSide(side, type, line, tp_line) {
+            if (type === 'moneyline') {
+                if (side === 'yes') return 'Away Win';
+                if (side === 'no') return 'Home Win';
+                if (side === 'home') return 'Home Win';
+                if (side === 'away') return 'Away Win';
+            }
+            if (type === 'spread') {
+                if (side === 'yes') return `Away ${line > 0 ? '+' : ''}${line}`;
+                if (side === 'no') return `Home ${-line > 0 ? '+' : ''}${-line}`;
+                const displayLine = tp_line !== null && tp_line !== undefined ? tp_line : -line;
+                if (side === 'home') return `Home ${displayLine > 0 ? '+' : ''}${displayLine}`;
+                if (side === 'away') return `Away ${-displayLine > 0 ? '+' : ''}${-displayLine}`;
+            }
+            if (type === 'total') {
+                if (side === 'yes' || side === 'over') return `Over ${line}`;
+                if (side === 'no' || side === 'under') return `Under ${line}`;
+            }
+            return side;
+        }
+
+        function refresh() {
+            const btn = document.querySelector('.refresh-btn');
+            btn.classList.add('loading');
+            fetch('/api/refresh', { method: 'POST' })
+                .finally(() => setTimeout(() => btn.classList.remove('loading'), 1000));
+        }
+
+        connect();
+    </script>
+</body>
+</html>
