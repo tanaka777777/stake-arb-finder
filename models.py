@@ -45,7 +45,7 @@ class Arb:
     poly_odds: float
     poly_stake_pct: float  # Optimal stake %
 
-    # TP side (kept as tp_ for compatibility - represents Stake in this repo)
+    # TP side (kept as tp_ for compatibility - represents Bovada in this repo)
     tp_side: str  # "home" | "away" | "over" | "under"
     tp_odds: float
     tp_stake_pct: float
@@ -54,7 +54,7 @@ class Arb:
     poly_size: float | None = None  # Shares available at best ask
     poly_url: str = ""
     tp_url: str = ""
-    tp_line: float | None = None  # Stake line for spreads (may differ from poly line)
+    tp_line: float | None = None  # Bovada line for spreads (may differ from poly line)
 
     # Tracking
     found_at: datetime = field(default_factory=datetime.now)

@@ -32,6 +32,6 @@ class SportAdapter(ABC):
         pass
 
     @abstractmethod
-    def parse_stake(self, raw_data: dict, sport_key: str) -> list['Game']:
-        """Parse Stake odds-api.io output into Game objects."""
+    def parse_bovada(self, raw_data: dict, sport_key: str) -> list['Game']:
+        """Parse Bovada odds-api.io output into Game objects."""
         pass

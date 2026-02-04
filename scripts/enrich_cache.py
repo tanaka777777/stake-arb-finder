@@ -1,7 +1,7 @@
 """
 Cache enrichment script for Polymarket asset IDs.
 
-Fetches Polymarket markets and matches them to Stake games in the cache,
+Fetches Polymarket markets and matches them to Bovada games in the cache,
 storing asset_ids for WebSocket subscriptions.
 
 Run daily or when match_cache.json is updated:
@@ -120,15 +120,15 @@ def parse_polymarket_market(market: dict) -> dict | None:
     }
 
 
-def match_stake_to_poly(stake_match: dict, poly_games: dict, sport: str = "") -> tuple[str, bool] | None:
+def match_bovada_to_poly(bovada_match: dict, poly_games: dict, sport: str = "") -> tuple[str, bool] | None:
     """
-    Find matching Polymarket game_id for a Stake match.
+    Find matching Polymarket game_id for a Bovada match.
 
     Returns tuple of (game_id, teams_swapped) or None if no match found.
-    teams_swapped is True when Poly's team order is opposite of Stake's.
+    teams_swapped is True when Poly's team order is opposite of Bovada's.
     """
-    # Extract date from Stake match - handle timezone offset
-    start_date = stake_match.get("startDate", "")
+    # Extract date from Bovada match - handle timezone offset
+    start_date = bovada_match.get("startDate", "")
     possible_dates = set()
     if start_date:
         try:
@@ -140,8 +140,8 @@ def match_stake_to_poly(stake_match: dict, poly_games: dict, sport: str = "") ->
             pass
 
     # Get team names
-    home_team = stake_match.get("homeTeam", "")
-    away_team = stake_match.get("awayTeam", "")
+    home_team = bovada_match.get("homeTeam", "")
+    away_team = bovada_match.get("awayTeam", "")
 
     log.debug(f"Looking for: {away_team} @ {home_team} on {possible_dates}")
 
@@ -159,7 +159,7 @@ def match_stake_to_poly(stake_match: dict, poly_games: dict, sport: str = "") ->
         poly_team1_abbr = parts[1]
         poly_team2_abbr = parts[2]
 
-        # Check normal order: Stake away = Poly team1, Stake home = Poly team2
+        # Check normal order: Bovada away = Poly team1, Bovada home = Poly team2
         away_match_t1 = _abbr_match(away_team, poly_team1_abbr)
         home_match_t2 = _abbr_match(home_team, poly_team2_abbr)
 
@@ -167,7 +167,7 @@ def match_stake_to_poly(stake_match: dict, poly_games: dict, sport: str = "") ->
             log.debug(f"  Matched: {game_id} (normal order)")
             return (game_id, False)
 
-        # Check swapped order: Stake away = Poly team2, Stake home = Poly team1
+        # Check swapped order: Bovada away = Poly team2, Bovada home = Poly team1
         away_match_t2 = _abbr_match(away_team, poly_team2_abbr)
         home_match_t1 = _abbr_match(home_team, poly_team1_abbr)
 
@@ -362,27 +362,27 @@ def enrich_cache() -> dict:
                     "condition_id": parsed.get("condition_id"),
                 })
 
-        # Match each Stake game to Polymarket
+        # Match each Bovada game to Polymarket
         matches = sport_data.get("matches", [])
         matched_count = 0
 
-        for stake_match in matches:
-            match_result = match_stake_to_poly(stake_match, poly_games, sport)
+        for bovada_match in matches:
+            match_result = match_bovada_to_poly(bovada_match, poly_games, sport)
 
             if match_result:
                 poly_game_id, teams_swapped = match_result
                 assets = assets_by_game.get(poly_game_id, [])
-                stake_match["polymarket"] = {
+                bovada_match["polymarket"] = {
                     "game_id": poly_game_id,
                     "assets": assets,
                     "teams_swapped": teams_swapped,
                 }
                 matched_count += 1
                 swap_note = " (swapped)" if teams_swapped else ""
-                log.info(f"  ✓ {stake_match['name']} -> {poly_game_id}{swap_note} ({len(assets)} assets)")
+                log.info(f"  ✓ {bovada_match['name']} -> {poly_game_id}{swap_note} ({len(assets)} assets)")
             else:
-                stake_match["polymarket"] = None
-                log.debug(f"  ✗ {stake_match['name']} - no match")
+                bovada_match["polymarket"] = None
+                log.debug(f"  ✗ {bovada_match['name']} - no match")
 
         log.info(f"[{sport}] Matched {matched_count}/{len(matches)} games to Polymarket")
 

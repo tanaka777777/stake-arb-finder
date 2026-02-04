@@ -1,5 +1,5 @@
 """
-Configuration for Stake/Polymarket Arb Monitor.
+Configuration for Bovada/Polymarket Arb Monitor.
 """
 
 import os
@@ -20,24 +20,24 @@ LOG_THRESHOLD_PCT = 5.0
 ARB_LOG_FILE = "arb_history.json"
 
 # Sports configurations
-# stake_sport and stake_league match odds-api.io naming
+# bovada_sport and bovada_league match odds-api.io naming
 SPORTS = {
     "NBA": {
         "polymarket_tag_id": 745,
-        "stake_sport": "basketball",
-        "stake_league": "usa-nba",
+        "bovada_sport": "basketball",
+        "bovada_league": "usa-nba",
         "market_types": ["moneyline", "spreads", "totals"],
     },
     "NHL": {
         "polymarket_tag_id": 899,
-        "stake_sport": "ice-hockey",
-        "stake_league": "usa-nhl",
+        "bovada_sport": "ice-hockey",
+        "bovada_league": "usa-nhl",
         "market_types": ["moneyline", "totals"],  # No spreads for NHL
     },
     "NFL": {
         "polymarket_tag_id": 450,
-        "stake_sport": "american-football",
-        "stake_league": "usa-nfl",
+        "bovada_sport": "american-football",
+        "bovada_league": "usa-nfl",
         "market_types": ["moneyline", "spreads", "totals"],
     },
 }

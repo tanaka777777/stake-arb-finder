@@ -23,9 +23,9 @@ log = logging.getLogger("discord-bot")
 
 
 class ArbAlertView(View):
-    """View with buttons for Polymarket and Stake links."""
+    """View with buttons for Polymarket and Bovada links."""
 
-    def __init__(self, poly_url: str, stake_url: str):
+    def __init__(self, poly_url: str, bovada_url: str):
         super().__init__(timeout=None)
         if poly_url:
             self.add_item(Button(
@@ -34,11 +34,11 @@ class ArbAlertView(View):
                 url=poly_url,
                 emoji="\U0001F7E3"  # purple circle
             ))
-        if stake_url:
+        if bovada_url:
             self.add_item(Button(
-                label="Stake",
+                label="Bovada",
                 style=ButtonStyle.link,
-                url=stake_url,
+                url=bovada_url,
                 emoji="\U0001F7E0"  # orange circle
             ))
 
@@ -140,7 +140,7 @@ class DiscordNotifier:
 
         # Calculate stakes using the arb's stake percentages
         poly_stake = total_stake * (arb.poly_stake_pct / 100)
-        stake_stake = total_stake * (arb.tp_stake_pct / 100)
+        bovada_stake = total_stake * (arb.tp_stake_pct / 100)
 
         # Calculate guaranteed return
         # If we bet poly_stake at poly_odds, payout = poly_stake * poly_odds
@@ -160,8 +160,8 @@ class DiscordNotifier:
             inline=True
         )
         embed.add_field(
-            name=f"\U0001F7E0 Stake ({arb.tp_side.upper()})",
-            value=f"**${stake_stake:,.2f}** @ {arb.tp_odds:.3f}",
+            name=f"\U0001F7E0 Bovada ({arb.tp_side.upper()})",
+            value=f"**${bovada_stake:,.2f}** @ {arb.tp_odds:.3f}",
             inline=True
         )
         embed.add_field(
@@ -243,13 +243,13 @@ class DiscordNotifier:
             inline=True
         )
 
-        # Stake side
-        stake_desc = f"**{arb.tp_side.upper()}** @ {arb.tp_odds:.3f}"
+        # Bovada side
+        bovada_desc = f"**{arb.tp_side.upper()}** @ {arb.tp_odds:.3f}"
         if arb.tp_line is not None and arb.tp_line != arb.line:
-            stake_desc += f"\nLine: {arb.tp_line}"
+            bovada_desc += f"\nLine: {arb.tp_line}"
         embed.add_field(
-            name="\U0001F7E0 Stake",
-            value=stake_desc,
+            name="\U0001F7E0 Bovada",
+            value=bovada_desc,
             inline=True
         )
 

@@ -1,8 +1,8 @@
 """
-Stake odds fetcher via odds-api.io.
+Bovada odds fetcher via odds-api.io.
 
-Fetches Stake odds for NBA, NHL, NFL and returns in the same format
-as thunderpick.fetch_odds() so adapters work unchanged.
+Fetches Bovada odds for NBA, NHL, NFL and returns in a standardized format
+so adapters work unchanged.
 """
 
 import os
@@ -101,7 +101,7 @@ def _fetch_events(sport: str, league: str) -> list:
     params = {
         "sport": sport,
         "league": league,
-        "bookmaker": "Stake",
+        "bookmaker": "Bovada",
     }
 
     events = _api_request(EVENTS_URL, params)
@@ -135,7 +135,7 @@ def _fetch_odds_batch(event_ids: list[str]) -> list:
 
     params = {
         "eventIds": ",".join(map(str, event_ids)),
-        "bookmakers": "Stake",
+        "bookmakers": "Bovada",
     }
 
     odds = _api_request(ODDS_URL, params)
@@ -218,25 +218,25 @@ def _convert_nhl_3way_to_2way(home_3way: float, draw_3way: float, away_3way: flo
 
 def _extract_markets(event_odds: dict, league: str) -> dict | None:
     """
-    Extract markets from Stake odds data.
+    Extract markets from Bovada odds data.
 
-    Returns dict in thunderpick format:
+    Returns dict in standardized format:
     {
         "moneyline": {"home": {"odds": X}, "away": {"odds": X}},
         "spreads": [{"line": X, "home": {"odds": X}, "away": {"odds": X}}],
         "totals": [{"line": X, "over": {"odds": X}, "under": {"odds": X}}],
     }
     """
-    if "bookmakers" not in event_odds or "Stake" not in event_odds["bookmakers"]:
+    if "bookmakers" not in event_odds or "Bovada" not in event_odds["bookmakers"]:
         return None
 
-    stake_markets = event_odds["bookmakers"]["Stake"]
+    bovada_markets = event_odds["bookmakers"]["Bovada"]
     result = {"moneyline": None, "spreads": [], "totals": []}
 
     # For all sports (including NHL), use ML market directly if available
     # NHL has both "3-Way Result" and "ML" markets - use ML for accurate 2-way odds
     ml_market = None
-    for market in stake_markets:
+    for market in bovada_markets:
         if market["name"] == "ML":
             ml_market = market
             break
@@ -253,7 +253,7 @@ def _extract_markets(event_odds: dict, league: str) -> dict | None:
     elif league == "usa-nhl":
         # Fallback: convert 3-way to 2-way if ML not available
         threeway_market = None
-        for market in stake_markets:
+        for market in bovada_markets:
             if market["name"] == "3-Way Result":
                 threeway_market = market
                 break
@@ -273,7 +273,7 @@ def _extract_markets(event_odds: dict, league: str) -> dict | None:
                     }
     else:
         # For other sports, use ML market
-        for market in stake_markets:
+        for market in bovada_markets:
             if market["name"] == "ML":
                 if market.get("odds"):
                     odds_data = market["odds"][0]
@@ -287,7 +287,7 @@ def _extract_markets(event_odds: dict, league: str) -> dict | None:
                 break
 
     # Extract spreads (Handicap market)
-    for market in stake_markets:
+    for market in bovada_markets:
         if market["name"] == "Handicap":
             for odds_entry in market.get("odds", []):
                 line = odds_entry.get("hdp")
@@ -302,7 +302,7 @@ def _extract_markets(event_odds: dict, league: str) -> dict | None:
             break
 
     # Extract totals
-    for market in stake_markets:
+    for market in bovada_markets:
         if market["name"] == "Totals":
             for odds_entry in market.get("odds", []):
                 line = odds_entry.get("hdp")
@@ -376,16 +376,16 @@ def fetch_odds_only(leagues: list[str] = None) -> dict | None:
             if not markets:
                 continue
 
-            stake_url = event_odds.get("urls", {}).get("Stake", "")
-            if not stake_url:
-                stake_url = f"https://stake.com/sports/{config['sport']}"
+            bovada_url = event_odds.get("urls", {}).get("Bovada", "")
+            if not bovada_url:
+                bovada_url = f"https://www.bovada.lv/sports/{config['sport']}"
 
             game = {
                 "id": str(event_odds.get("id", "")),
                 "homeTeam": event_odds.get("home", ""),
                 "awayTeam": event_odds.get("away", ""),
                 "startDate": event_odds.get("date", ""),
-                "url": stake_url,
+                "url": bovada_url,
                 "markets": markets,
             }
             games.append(game)
@@ -395,20 +395,20 @@ def fetch_odds_only(leagues: list[str] = None) -> dict | None:
             "games": games,
         }
 
-        log.info(f"[{league_key}] Processed {len(games)} games with Stake odds")
+        log.info(f"[{league_key}] Processed {len(games)} games with Bovada odds")
 
     return result
 
 
 def fetch_odds(leagues: list[str] = None, use_cache: bool = True) -> dict | None:
     """
-    Fetch Stake odds via odds-api.io.
+    Fetch Bovada odds via odds-api.io.
 
     Args:
         leagues: List of league keys (e.g., ["NBA", "NHL"]). If None, fetches all.
         use_cache: If True and events are cached, skip event fetch. If False, always fetch events.
 
-    Returns same format as thunderpick.fetch_odds() so adapters work unchanged:
+    Returns:
     {
         "NBA": {
             "gamesCount": 5,
@@ -418,7 +418,7 @@ def fetch_odds(leagues: list[str] = None, use_cache: bool = True) -> dict | None
                     "homeTeam": "Celtics",
                     "awayTeam": "Lakers",
                     "startDate": "2026-02-05T00:00:00Z",
-                    "url": "https://stake.com/...",
+                    "url": "https://www.bovada.lv/...",
                     "markets": {
                         "moneyline": {"home": {"odds": 1.85}, "away": {"odds": 2.05}},
                         "spreads": [{"line": -4.5, "home": {"odds": 1.91}, "away": {"odds": 1.91}}],
@@ -479,17 +479,17 @@ def fetch_odds(leagues: list[str] = None, use_cache: bool = True) -> dict | None
             if not markets:
                 continue
 
-            # Build Stake URL
-            stake_url = event_odds.get("urls", {}).get("Stake", "")
-            if not stake_url:
-                stake_url = f"https://stake.com/sports/{config['sport']}"
+            # Build Bovada URL
+            bovada_url = event_odds.get("urls", {}).get("Bovada", "")
+            if not bovada_url:
+                bovada_url = f"https://www.bovada.lv/sports/{config['sport']}"
 
             game = {
                 "id": str(event_odds.get("id", "")),
                 "homeTeam": event_odds.get("home", ""),
                 "awayTeam": event_odds.get("away", ""),
                 "startDate": event_odds.get("date", ""),
-                "url": stake_url,
+                "url": bovada_url,
                 "markets": markets,
             }
             games.append(game)
@@ -499,7 +499,7 @@ def fetch_odds(leagues: list[str] = None, use_cache: bool = True) -> dict | None
             "games": games,
         }
 
-        log.info(f"[{league_key}] Processed {len(games)} games with Stake odds")
+        log.info(f"[{league_key}] Processed {len(games)} games with Bovada odds")
 
     return result
 

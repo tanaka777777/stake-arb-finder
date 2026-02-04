@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Arb Monitor - Stake</title>
+    <title>Arb Monitor - Bovada</title>
     <style>
         :root {
             --bg-primary: #0a0a0f;
@@ -19,7 +19,7 @@
             --text-muted: #555566;
             --border: #2a2a3a;
             --poly: #a855f7;
-            --stake: #f59e0b;  /* Stake orange */
+            --bovada: #f59e0b;  /* Bovada orange */
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -57,7 +57,7 @@
         .logo-icon {
             width: 40px;
             height: 40px;
-            background: linear-gradient(135deg, var(--accent), var(--stake));
+            background: linear-gradient(135deg, var(--accent), var(--bovada));
             border-radius: 10px;
             display: flex;
             align-items: center;
@@ -322,7 +322,7 @@
         }
 
         .bet-source.poly { color: var(--poly); }
-        .bet-source.stake { color: var(--stake); }
+        .bet-source.bovada { color: var(--bovada); }
 
         .bet-source::before {
             content: '';
@@ -374,7 +374,7 @@
         }
 
         .bet-link.poly:hover { border-color: var(--poly); }
-        .bet-link.stake:hover { border-color: var(--stake); }
+        .bet-link.bovada:hover { border-color: var(--bovada); }
 
         /* Empty State */
         .empty-state {
@@ -511,7 +511,7 @@
         }
 
         .matched-link.poly:hover { border-color: var(--poly); }
-        .matched-link.stake:hover { border-color: var(--stake); }
+        .matched-link.bovada:hover { border-color: var(--bovada); }
 
         /* Footer */
         footer {
@@ -534,7 +534,7 @@
     <header>
         <div class="logo">
             <div class="logo-icon">⚡</div>
-            <span>Arb Monitor - Stake</span>
+            <span>Arb Monitor - Bovada</span>
         </div>
         <div class="status">
             <div class="status-item">
@@ -584,7 +584,7 @@
             </div>
             <div class="pipeline-stats" id="pipeline-stats">
                 <span>📊 <strong id="stat-poly">0</strong> Poly</span>
-                <span>🎰 <strong id="stat-stake">0</strong> Stake</span>
+                <span>🎰 <strong id="stat-bovada">0</strong> Bovada</span>
                 <span>🔗 <strong id="stat-matched">0</strong> Matched</span>
             </div>
             <div class="pipeline-error" id="pipeline-error" style="display: none;"></div>
@@ -598,7 +598,7 @@
             <div class="empty-state">
                 <div class="empty-icon">📡</div>
                 <div class="empty-title">Scanning for arbitrage...</div>
-                <p>Monitoring Polymarket & Stake for opportunities</p>
+                <p>Monitoring Polymarket & Bovada for opportunities</p>
             </div>
         </div>
 
@@ -617,7 +617,7 @@
     </main>
 
     <footer>
-        Arb Monitor • Polymarket ↔ Stake • Updates every {{ poll_interval }}s
+        Arb Monitor • Polymarket ↔ Bovada • Updates every {{ poll_interval }}s
     </footer>
 
     <script>
@@ -726,7 +726,7 @@
             const statusMap = {
                 'idle': { dot: 'idle', text: 'Idle', class: '' },
                 'fetching_polymarket': { dot: 'fetching', text: `Fetching Polymarket (${pipeline.current_sport})...`, class: 'fetching' },
-                'fetching_stake': { dot: 'fetching', text: `Fetching Stake (${pipeline.current_sport})...`, class: 'fetching' },
+                'fetching_bovada': { dot: 'fetching', text: `Fetching Bovada (${pipeline.current_sport})...`, class: 'fetching' },
                 'processing': { dot: 'fetching', text: `Processing ${pipeline.current_sport}...`, class: 'fetching' },
                 'error': { dot: 'error', text: 'Error', class: 'error' },
                 'ws_connected': { dot: 'idle', text: 'WebSocket Connected', class: '' },
@@ -739,7 +739,7 @@
             if (s.class) container.classList.add(s.class);
 
             document.getElementById('stat-poly').textContent = pipeline.poly_games || 0;
-            document.getElementById('stat-stake').textContent = pipeline.tp_games || 0;
+            document.getElementById('stat-bovada').textContent = pipeline.tp_games || 0;
             document.getElementById('stat-matched').textContent = pipeline.matched || 0;
 
             const headerStatus = document.getElementById('status-text');
@@ -809,15 +809,15 @@
                             <div class="bet-side">${formatSide(arb.poly_side, arb.market_type, arb.line, null)}</div>
                             <div class="bet-odds">${arb.poly_odds.toFixed(3)} <span style="color: var(--text-secondary); font-size: 0.8em;">(${Math.round(100 / arb.poly_odds)}¢)</span></div>
                             ${arb.poly_size ? `<div class="bet-stake" style="color: var(--poly);">Liquidity: <span>$${(arb.poly_size * (1 / arb.poly_odds)).toFixed(0)}</span> (${Math.round(arb.poly_size)} shares)</div>` : ''}
-                            <div class="bet-stake">Stake: <span>${(100 * arb.poly_odds / (arb.poly_odds + arb.tp_odds)).toFixed(1)}%</span> of bankroll</div>
+                            <div class="bet-stake">Bovada: <span>${(100 * arb.poly_odds / (arb.poly_odds + arb.tp_odds)).toFixed(1)}%</span> of bankroll</div>
                             ${arb.poly_url ? `<a href="${arb.poly_url}" target="_blank" class="bet-link poly">Open on Polymarket →</a>` : ''}
                         </div>
                         <div class="bet-card">
-                            <div class="bet-source stake">Stake</div>
+                            <div class="bet-source bovada">Bovada</div>
                             <div class="bet-side">${formatSide(arb.tp_side, arb.market_type, arb.line, arb.tp_line)}</div>
                             <div class="bet-odds">${arb.tp_odds.toFixed(3)}</div>
-                            <div class="bet-stake">Stake: <span>${(100 * arb.tp_odds / (arb.poly_odds + arb.tp_odds)).toFixed(1)}%</span> of bankroll</div>
-                            ${arb.tp_url ? `<a href="${arb.tp_url}" target="_blank" class="bet-link stake">Open on Stake →</a>` : ''}
+                            <div class="bet-stake">Bovada: <span>${(100 * arb.tp_odds / (arb.poly_odds + arb.tp_odds)).toFixed(1)}%</span> of bankroll</div>
+                            ${arb.tp_url ? `<a href="${arb.tp_url}" target="_blank" class="bet-link bovada">Open on Bovada →</a>` : ''}
                         </div>
                     </div>
                 </div>
@@ -835,12 +835,12 @@
                             <div class="matched-game-sport">${m.sport}</div>
                             <div class="matched-game-name">${m.game}</div>
                             <div class="matched-game-markets">
-                                Poly: ${m.poly_markets.join(', ') || 'none'} • Stake: ${m.tp_markets.join(', ') || 'none'}
+                                Poly: ${m.poly_markets.join(', ') || 'none'} • Bovada: ${m.tp_markets.join(', ') || 'none'}
                             </div>
                         </div>
                         <div class="matched-game-links">
                             ${m.poly_url ? `<a href="${m.poly_url}" target="_blank" class="matched-link poly">Polymarket</a>` : ''}
-                            ${m.tp_url ? `<a href="${m.tp_url}" target="_blank" class="matched-link stake">Stake</a>` : ''}
+                            ${m.tp_url ? `<a href="${m.tp_url}" target="_blank" class="matched-link bovada">Bovada</a>` : ''}
                         </div>
                     </div>
                 `).join('');
@@ -922,7 +922,7 @@
                             const isArb = arb.profit_pct > 0;
                             const profitStr = isArb ? `+${arb.profit_pct.toFixed(2)}% ARB` : 'no arb';
                             const color = isArb ? '#00ff88' : '#888';
-                            console.log(`  %c${arb.market_type}${lineStr}: Poly ${arb.poly_side} @${arb.poly_odds.toFixed(3)} vs Stake ${arb.stake_side} @${arb.stake_odds.toFixed(3)} → sum=${arb.implied_sum.toFixed(4)} (${profitStr})`, `color: ${color};`);
+                            console.log(`  %c${arb.market_type}${lineStr}: Poly ${arb.poly_side} @${arb.poly_odds.toFixed(3)} vs Bovada ${arb.bovada_side} @${arb.bovada_odds.toFixed(3)} → sum=${arb.implied_sum.toFixed(4)} (${profitStr})`, `color: ${color};`);
                         });
                         console.log('');
                     });

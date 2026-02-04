@@ -86,12 +86,12 @@ class NBAAdapter(SportAdapter):
             games.append(game)
         return games
 
-    def parse_stake(self, raw_data: dict, sport_key: str = "NBA") -> list[Game]:
-        """Parse Stake odds-api.io output into Game objects."""
+    def parse_bovada(self, raw_data: dict, sport_key: str = "NBA") -> list[Game]:
+        """Parse Bovada odds-api.io output into Game objects."""
         games = []
-        stake_games = raw_data.get(sport_key, {}).get("games", [])
+        bovada_games = raw_data.get(sport_key, {}).get("games", [])
 
-        for data in stake_games:
+        for data in bovada_games:
             if not data.get("markets"):
                 continue
 
@@ -101,7 +101,7 @@ class NBAAdapter(SportAdapter):
                 away_team=data.get("awayTeam", ""),
                 home_team=data.get("homeTeam", ""),
                 game_date=data.get("startDate", "")[:10] if data.get("startDate") else "",
-                source="stake",
+                source="bovada",
                 url=data.get("url", ""),
                 markets={"moneyline": [], "spreads": [], "totals": []},
             )

@@ -5,7 +5,7 @@ This guide explains how to set up the Discord bot for receiving arbitrage alerts
 ## Features
 
 - Automatic notifications when arbs >1% are detected
-- Includes both Polymarket and Stake links
+- Includes both Polymarket and Bovada links
 - Reply with stake amount (e.g., "$500") to get calculated bet sizes
 - Shows guaranteed return and profit percentage
 
@@ -95,13 +95,13 @@ Lakers @ Celtics (NBA)
 Moneyline
 
 Polymarket: YES @ 2.100
-Stake: HOME @ 1.950
+Bovada: HOME @ 1.950
 
 Reply with amount (e.g. "$500") for stake calculation
-[Polymarket] [Stake]
+[Polymarket] [Bovada]
 ```
 
-### Calculating Stakes
+### Calculating Bovadas
 
 Reply to any alert message with a dollar amount:
 
@@ -112,9 +112,9 @@ $500
 The bot will respond with:
 
 ```
-Stake Calculation for $500.00:
+Bovada Calculation for $500.00:
 Polymarket (YES): $243.90 @ 2.100
-Stake (HOME): $256.10 @ 1.950
+Bovada (HOME): $256.10 @ 1.950
 Guaranteed Return: $512.19 (+2.45%)
 ```
 

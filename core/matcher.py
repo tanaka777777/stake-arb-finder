@@ -1,5 +1,5 @@
 """
-Game matcher - matches games across Polymarket and Stake.
+Game matcher - matches games across Polymarket and Bovada.
 """
 
 from models import Game
@@ -7,12 +7,12 @@ from models import Game
 
 def match_games(poly_games: list[Game], stake_games: list[Game], adapter) -> list[tuple[Game, Game, bool]]:
     """
-    Match Polymarket games to Stake games using normalized team names.
+    Match Polymarket games to Bovada games using normalized team names.
     Returns list of (poly_game, stake_game, is_swapped) tuples.
 
-    is_swapped is True when Poly's team order is opposite of Stake's:
-    - Normal: Poly away = Stake away, Poly home = Stake home
-    - Swapped: Poly away = Stake home, Poly home = Stake away
+    is_swapped is True when Poly's team order is opposite of Bovada's:
+    - Normal: Poly away = Bovada away, Poly home = Bovada home
+    - Swapped: Poly away = Bovada home, Poly home = Bovada away
     """
     matched = []
     used_stake = set()
@@ -28,13 +28,13 @@ def match_games(poly_games: list[Game], stake_games: list[Game], adapter) -> lis
             stake_away = adapter.normalize_team(sg.away_team)
             stake_home = adapter.normalize_team(sg.home_team)
 
-            # Check normal order: Poly away = Stake away, Poly home = Stake home
+            # Check normal order: Poly away = Bovada away, Poly home = Bovada home
             if poly_away == stake_away and poly_home == stake_home:
                 matched.append((pg, sg, False))  # Not swapped
                 used_stake.add(i)
                 break
 
-            # Check swapped order: Poly away = Stake home, Poly home = Stake away
+            # Check swapped order: Poly away = Bovada home, Poly home = Bovada away
             if poly_away == stake_home and poly_home == stake_away:
                 matched.append((pg, sg, True))  # Swapped
                 used_stake.add(i)

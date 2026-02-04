@@ -1,8 +1,8 @@
 """
-Arb Monitor - Real-time arbitrage detection between Polymarket and Stake.
+Arb Monitor - Real-time arbitrage detection between Polymarket and Bovada.
 
 Uses WebSocket for real-time Polymarket prices.
-Stake odds fetched via odds-api.io (no Puppeteer needed).
+Bovada odds fetched via odds-api.io.
 """
 
 # Load .env file before other imports
@@ -25,7 +25,7 @@ from flask import Flask, Response, render_template, jsonify
 import config
 from models import Arb
 from adapters import get_adapter
-from sources import fetch_polymarket, fetch_stake, fetch_stake_odds_only, refresh_stake_events, get_price_provider
+from sources import fetch_polymarket, fetch_bovada, fetch_bovada_odds_only, refresh_bovada_events, get_price_provider
 from sources.discord_bot import start_discord_bot, send_arb_alert
 from core import match_games, find_arbs
 from scripts.enrich_cache import load_asset_mapping_from_cache, enrich_cache as run_enrich_cache
@@ -49,7 +49,7 @@ log = logging.getLogger("arb-monitor")
 class Status(Enum):
     IDLE = "idle"
     FETCHING_POLY = "fetching_polymarket"
-    FETCHING_STAKE = "fetching_stake"
+    FETCHING_BOVADA = "fetching_bovada"
     PROCESSING = "processing"
     ERROR = "error"
     WS_CONNECTING = "ws_connecting"
@@ -74,13 +74,13 @@ class PipelineState:
 
     # Counters for current cycle
     poly_games_fetched: int = 0
-    stake_games_fetched: int = 0
+    bovada_games_fetched: int = 0
     games_matched: int = 0
     arbs_found: int = 0
 
     # Fetch timestamps
     last_poly_fetch: datetime | None = None
-    last_stake_fetch: datetime | None = None
+    last_bovada_fetch: datetime | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -92,11 +92,11 @@ class PipelineState:
             "ws_connected": self.ws_connected,
             "ws_assets": self.ws_assets_subscribed,
             "poly_games": self.poly_games_fetched,
-            "tp_games": self.stake_games_fetched,  # Keep tp_games for UI compatibility
+            "bovada_games": self.bovada_games_fetched,
             "matched": self.games_matched,
             "arbs": self.arbs_found,
             "last_poly_fetch": self.last_poly_fetch.isoformat() if self.last_poly_fetch else None,
-            "last_tp_fetch": self.last_stake_fetch.isoformat() if self.last_stake_fetch else None,
+            "last_bovada_fetch": self.last_bovada_fetch.isoformat() if self.last_bovada_fetch else None,
         }
 
 
@@ -117,12 +117,12 @@ subscribers: list = []
 
 # WebSocket price provider
 price_provider = get_price_provider()
-ws_game_mapping: dict[str, dict] = {}  # game_id -> {"sport": str, "poly_game": Game, "stake_game": Game}
+ws_game_mapping: dict[str, dict] = {}  # game_id -> {"sport": str, "poly_game": Game, "bovada_game": Game}
 
-# Cached Stake data for instant arb recalculation
-cached_stake_games: dict[str, list] = {}  # sport -> list of Stake Game objects
+# Cached Bovada data for instant arb recalculation
+cached_bovada_games: dict[str, list] = {}  # sport -> list of Bovada Game objects
 cached_match_info: list[dict] = []  # List of match info from cache file
-last_stake_fetch_time: datetime | None = None
+last_bovada_fetch_time: datetime | None = None
 
 
 # =============================================================================
@@ -232,7 +232,7 @@ def _build_poly_game_from_ws(game_id: str, sport: str, match: dict, prices: dict
 
 
 def _update_arb_state(all_arbs: list[Arb], all_matched_no_arb: list[dict],
-                      total_matched: int, total_stake: int = 0,
+                      total_matched: int, total_bovada: int = 0,
                       total_poly: int = 0, is_ws_mode: bool = False) -> None:
     """
     Update global arb state and notify subscribers.
@@ -287,8 +287,8 @@ def _update_arb_state(all_arbs: list[Arb], all_matched_no_arb: list[dict],
         pipeline.last_success = datetime.now()
         pipeline.last_error = ""
 
-        if total_stake > 0:
-            pipeline.stake_games_fetched = total_stake
+        if total_bovada > 0:
+            pipeline.bovada_games_fetched = total_bovada
         if total_poly > 0:
             pipeline.poly_games_fetched = total_poly
 
@@ -310,7 +310,7 @@ def refresh_data():
     all_arbs = []
     all_matched_no_arb = []
     total_poly = 0
-    total_stake = 0
+    total_bovada = 0
     total_matched = 0
 
     for sport in config.ACTIVE_SPORTS:
@@ -341,40 +341,40 @@ def refresh_data():
         total_poly += len(poly_games)
 
         with state_lock:
-            pipeline.status = Status.FETCHING_STAKE
+            pipeline.status = Status.FETCHING_BOVADA
             pipeline.last_poly_fetch = datetime.now()
         notify_subscribers()
 
-        # Fetch Stake
-        log.info(f"[{sport}] Fetching Stake...")
-        stake_start = time.time()
-        stake_raw = fetch_stake([sport])
-        stake_elapsed = time.time() - stake_start
+        # Fetch Bovada
+        log.info(f"[{sport}] Fetching Bovada...")
+        bovada_start = time.time()
+        bovada_raw = fetch_bovada([sport])
+        bovada_elapsed = time.time() - bovada_start
 
-        if not stake_raw:
-            log.warning(f"[{sport}] Stake fetch failed")
+        if not bovada_raw:
+            log.warning(f"[{sport}] Bovada fetch failed")
             with state_lock:
-                pipeline.last_error = f"{sport}: Stake fetch failed"
+                pipeline.last_error = f"{sport}: Bovada fetch failed"
             continue
 
-        stake_games = adapter.parse_stake(stake_raw, sport)
-        log.info(f"[{sport}] Stake: {len(stake_games)} games ({stake_elapsed:.1f}s)")
-        total_stake += len(stake_games)
+        bovada_games = adapter.parse_bovada(bovada_raw, sport)
+        log.info(f"[{sport}] Bovada: {len(bovada_games)} games ({bovada_elapsed:.1f}s)")
+        total_bovada += len(bovada_games)
 
         with state_lock:
             pipeline.status = Status.PROCESSING
-            pipeline.last_stake_fetch = datetime.now()
+            pipeline.last_bovada_fetch = datetime.now()
         notify_subscribers()
 
         # Match games
-        matched = match_games(poly_games, stake_games, adapter)
+        matched = match_games(poly_games, bovada_games, adapter)
         log.info(f"[{sport}] Matched: {len(matched)} games")
         total_matched += len(matched)
 
         # Find arbs
         sport_arbs = 0
-        for poly_game, stake_game, is_swapped in matched:
-            game_arbs = find_arbs(poly_game, stake_game, is_swapped)
+        for poly_game, bovada_game, is_swapped in matched:
+            game_arbs = find_arbs(poly_game, bovada_game, is_swapped)
             profitable = [a for a in game_arbs if a.profit_pct >= config.MIN_PROFIT_PCT]
             all_arbs.extend(profitable)
             sport_arbs += len(profitable)
@@ -384,19 +384,19 @@ def refresh_data():
                     "sport": sport,
                     "game": f"{poly_game.away_team} @ {poly_game.home_team}",
                     "poly_url": poly_game.url,
-                    "tp_url": stake_game.url,
+                    "bovada_url": bovada_game.url,
                     "poly_markets": list(poly_game.markets.keys()),
-                    "tp_markets": list(stake_game.markets.keys()),
+                    "bovada_markets": list(bovada_game.markets.keys()),
                 })
 
         log.info(f"[{sport}] Arbs found: {sport_arbs}")
 
     # Update state and notify subscribers
     _update_arb_state(all_arbs, all_matched_no_arb, total_matched,
-                      total_stake=total_stake, total_poly=total_poly, is_ws_mode=False)
+                      total_bovada=total_bovada, total_poly=total_poly, is_ws_mode=False)
 
     cycle_elapsed = (datetime.now() - cycle_start).total_seconds()
-    log.info(f"Cycle complete: {total_poly} poly, {total_stake} stake, {total_matched} matched, {len(all_arbs)} arbs ({cycle_elapsed:.1f}s)")
+    log.info(f"Cycle complete: {total_poly} poly, {total_bovada} bovada, {total_matched} matched, {len(all_arbs)} arbs ({cycle_elapsed:.1f}s)")
     log.info("=" * 50)
 
 
@@ -485,10 +485,10 @@ def init_websocket_mode():
 
 def recalculate_arbs_instant():
     """
-    Instantly recalculate arbs using cached Stake odds + live WS Polymarket prices.
+    Instantly recalculate arbs using cached Bovada odds + live WS Polymarket prices.
     Called on every Polymarket WebSocket price update.
     """
-    if not cached_stake_games:
+    if not cached_bovada_games:
         return
 
     all_arbs = []
@@ -505,11 +505,11 @@ def recalculate_arbs_instant():
         return
 
     for sport in config.ACTIVE_SPORTS:
-        stake_games = cached_stake_games.get(sport, [])
-        if not stake_games:
+        bovada_games = cached_bovada_games.get(sport, [])
+        if not bovada_games:
             continue
 
-        stake_games_by_name = {_normalize_name(g.home_team, g.away_team): g for g in stake_games}
+        bovada_games_by_name = {_normalize_name(g.home_team, g.away_team): g for g in bovada_games}
         sport_cache = cache.get(sport, {})
         matches = sport_cache.get("matches", [])
 
@@ -528,15 +528,15 @@ def recalculate_arbs_instant():
             if not poly_game:
                 continue
 
-            # Match with cached Stake game
+            # Match with cached Bovada game
             home_team = match.get("homeTeam", "")
             away_team = match.get("awayTeam", "")
             match_key = _normalize_name(home_team, away_team)
-            stake_game = stake_games_by_name.get(match_key)
+            bovada_game = bovada_games_by_name.get(match_key)
 
-            if stake_game:
+            if bovada_game:
                 total_matched += 1
-                game_arbs = find_arbs(poly_game, stake_game, teams_swapped)
+                game_arbs = find_arbs(poly_game, bovada_game, teams_swapped)
                 profitable = [a for a in game_arbs if a.profit_pct >= config.MIN_PROFIT_PCT]
                 all_arbs.extend(profitable)
 
@@ -545,9 +545,9 @@ def recalculate_arbs_instant():
                         "sport": sport,
                         "game": f"{away_team} @ {home_team}",
                         "poly_url": poly_game.url,
-                        "tp_url": stake_game.url,
+                        "bovada_url": bovada_game.url,
                         "poly_markets": list(poly_game.markets.keys()),
-                        "tp_markets": list(stake_game.markets.keys()),
+                        "bovada_markets": list(bovada_game.markets.keys()),
                     })
 
     _update_arb_state(all_arbs, all_matched_no_arb, total_matched, is_ws_mode=True)
@@ -566,7 +566,7 @@ def on_poly_price_update(asset_id: str, price):
     """
     global _last_recalc_time, _pending_recalc
 
-    if not cached_stake_games:
+    if not cached_bovada_games:
         return
 
     with _recalc_lock:
@@ -591,7 +591,7 @@ def debounce_flush_worker():
     while True:
         time.sleep(3)
         with _recalc_lock:
-            if _pending_recalc and cached_stake_games:
+            if _pending_recalc and cached_bovada_games:
                 _pending_recalc = False
                 _last_recalc_time = time.time()
                 try:
@@ -600,44 +600,43 @@ def debounce_flush_worker():
                     log.error(f"Debounce flush error: {e}")
 
 
-def build_stake_cache(refresh_events: bool = True):
+def build_bovada_cache(refresh_events: bool = True):
     """
-    Build initial Stake game cache by fetching from odds-api.io.
-    This replaces the Thunderpick Puppeteer scraping.
+    Build initial Bovada game cache by fetching from odds-api.io.
 
     Args:
         refresh_events: If True, fetch fresh event list. If False, use cached events.
     """
-    global cached_stake_games
+    global cached_bovada_games
 
-    log.info("[STAKE] Building Stake game cache from odds-api.io...")
+    log.info("[BOVADA] Building Bovada game cache from odds-api.io...")
 
     # Optionally refresh event list first
     if refresh_events:
-        log.info("[STAKE] Refreshing event list...")
-        event_counts = refresh_stake_events(config.ACTIVE_SPORTS)
+        log.info("[BOVADA] Refreshing event list...")
+        event_counts = refresh_bovada_events(config.ACTIVE_SPORTS)
         for sport, count in event_counts.items():
-            log.info(f"[STAKE] {sport}: {count} events cached")
+            log.info(f"[BOVADA] {sport}: {count} events cached")
 
-    # Fetch Stake odds for all active sports (will use cached events)
-    stake_raw = fetch_stake(config.ACTIVE_SPORTS, use_cache=True)
-    if not stake_raw:
-        log.error("[STAKE] Failed to fetch Stake odds")
+    # Fetch Bovada odds for all active sports (will use cached events)
+    bovada_raw = fetch_bovada(config.ACTIVE_SPORTS, use_cache=True)
+    if not bovada_raw:
+        log.error("[BOVADA] Failed to fetch Bovada odds")
         return False
 
     # Parse into Game objects for each sport
     for sport in config.ACTIVE_SPORTS:
         adapter = get_adapter(sport)
-        stake_games = adapter.parse_stake(stake_raw, sport)
-        cached_stake_games[sport] = stake_games
-        log.info(f"[STAKE] {sport}: {len(stake_games)} games cached")
+        bovada_games = adapter.parse_bovada(bovada_raw, sport)
+        cached_bovada_games[sport] = bovada_games
+        log.info(f"[BOVADA] {sport}: {len(bovada_games)} games cached")
 
     return True
 
 
 def build_match_cache():
     """
-    Build match_cache.json from Stake data.
+    Build match_cache.json from Bovada data.
     This creates the initial cache that will be enriched with Polymarket data.
     """
     cache_path = Path("match_cache.json")
@@ -651,15 +650,15 @@ def build_match_cache():
     else:
         cache = {}
 
-    # Fetch Stake data
-    stake_raw = fetch_stake(config.ACTIVE_SPORTS)
-    if not stake_raw:
-        log.error("Failed to fetch Stake data for cache building")
+    # Fetch Bovada data
+    bovada_raw = fetch_bovada(config.ACTIVE_SPORTS)
+    if not bovada_raw:
+        log.error("Failed to fetch Bovada data for cache building")
         return False
 
-    # Build cache entries from Stake data
+    # Build cache entries from Bovada data
     for sport in config.ACTIVE_SPORTS:
-        sport_data = stake_raw.get(sport, {})
+        sport_data = bovada_raw.get(sport, {})
         games = sport_data.get("games", [])
 
         matches = []
@@ -691,17 +690,17 @@ def build_match_cache():
 def event_driven_worker():
     """
     Event-driven worker:
-    - Fetches Stake every 60s to update cache
+    - Fetches Bovada every 60s to update cache
     - Poly prices update instantly via WebSocket callback
     """
-    global cached_stake_games, last_stake_fetch_time, pipeline
+    global cached_bovada_games, last_bovada_fetch_time, pipeline
 
     log.info("=" * 60)
     log.info("EVENT-DRIVEN WORKER STARTING")
     log.info("=" * 60)
 
-    # Step 1: Build Stake match cache
-    log.info("[STARTUP] Building Stake match cache...")
+    # Step 1: Build Bovada match cache
+    log.info("[STARTUP] Building Bovada match cache...")
     if not build_match_cache():
         log.error("[STARTUP] Failed to build match cache")
 
@@ -721,35 +720,35 @@ def event_driven_worker():
     # Start debounce flush thread
     threading.Thread(target=debounce_flush_worker, daemon=True).start()
 
-    # Step 4: Initial Stake fetch + arb calculation
-    log.info("[STARTUP] Fetching initial Stake odds...")
-    if build_stake_cache():
+    # Step 4: Initial Bovada fetch + arb calculation
+    log.info("[STARTUP] Fetching initial Bovada odds...")
+    if build_bovada_cache():
         log.info("[STARTUP] Running initial arb calculation...")
         recalculate_arbs_instant()
         log.info(f"[STARTUP] Initial calculation complete - {len(current_arbs)} arbs, {pipeline.games_matched} matched")
 
-    # Main loop: refresh Stake odds every 60s (using cached events)
+    # Main loop: refresh Bovada odds every 60s (using cached events)
     while True:
         try:
             log.info("=" * 50)
-            log.info("Refreshing Stake odds (using cached events)...")
+            log.info("Refreshing Bovada odds (using cached events)...")
 
             with state_lock:
-                pipeline.status = Status.FETCHING_STAKE
+                pipeline.status = Status.FETCHING_BOVADA
             notify_subscribers()
 
             # Fetch odds only for cached events (no event refresh)
-            stake_raw = fetch_stake_odds_only(config.ACTIVE_SPORTS)
-            if stake_raw:
+            bovada_raw = fetch_bovada_odds_only(config.ACTIVE_SPORTS)
+            if bovada_raw:
                 for sport in config.ACTIVE_SPORTS:
                     adapter = get_adapter(sport)
-                    stake_games = adapter.parse_stake(stake_raw, sport)
-                    cached_stake_games[sport] = stake_games
-                    log.info(f"[{sport}] Stake odds updated: {len(stake_games)} games")
+                    bovada_games = adapter.parse_bovada(bovada_raw, sport)
+                    cached_bovada_games[sport] = bovada_games
+                    log.info(f"[{sport}] Bovada odds updated: {len(bovada_games)} games")
             else:
-                log.warning("Stake odds fetch failed")
+                log.warning("Bovada odds fetch failed")
 
-            last_stake_fetch_time = datetime.now()
+            last_bovada_fetch_time = datetime.now()
 
             # Refresh stale Polymarket prices via REST
             stale_refreshed = price_provider.refresh_stale_prices(max_age_seconds=60.0)
@@ -758,19 +757,19 @@ def event_driven_worker():
 
             with state_lock:
                 pipeline.status = Status.WS_CONNECTED
-                pipeline.last_stake_fetch = datetime.now()
-                pipeline.stake_games_fetched = sum(len(g) for g in cached_stake_games.values())
+                pipeline.last_bovada_fetch = datetime.now()
+                pipeline.bovada_games_fetched = sum(len(g) for g in cached_bovada_games.values())
                 pipeline.ws_connected = price_provider.connected
             notify_subscribers()
 
-            # Trigger immediate recalc with fresh Stake data
+            # Trigger immediate recalc with fresh Bovada data
             recalculate_arbs_instant()
 
-            log.info(f"Stake cache refresh complete. Next refresh in {config.POLL_INTERVAL}s")
+            log.info(f"Bovada cache refresh complete. Next refresh in {config.POLL_INTERVAL}s")
             log.info("=" * 50)
 
         except Exception as e:
-            log.error(f"Stake refresh error: {e}")
+            log.error(f"Bovada refresh error: {e}")
             log.error(traceback.format_exc())
             with state_lock:
                 pipeline.status = Status.ERROR
@@ -885,7 +884,7 @@ def api_refresh_events():
     def do_refresh():
         log.info("Manual event refresh triggered")
         # Refresh events and rebuild caches
-        build_stake_cache(refresh_events=True)
+        build_bovada_cache(refresh_events=True)
         build_match_cache()
         # Re-enrich cache with Polymarket data
         try:
@@ -967,10 +966,10 @@ def api_enrich_cache():
 def api_debug_comparisons():
     """Return all odds comparisons for matched games - for console debugging."""
     comparisons = []
-    debug_info = {"stake_games_count": {}, "cache_matches_count": {}, "match_failures": []}
+    debug_info = {"bovada_games_count": {}, "cache_matches_count": {}, "match_failures": []}
 
-    if not cached_stake_games:
-        return jsonify({"error": "No Stake data cached", "comparisons": [], "debug": debug_info})
+    if not cached_bovada_games:
+        return jsonify({"error": "No Bovada data cached", "comparisons": [], "debug": debug_info})
 
     cache_path = Path("match_cache.json")
     if not cache_path.exists():
@@ -982,18 +981,18 @@ def api_debug_comparisons():
         return jsonify({"error": "Cache read failed", "comparisons": [], "debug": debug_info})
 
     for sport in config.ACTIVE_SPORTS:
-        stake_games = cached_stake_games.get(sport, [])
-        debug_info["stake_games_count"][sport] = len(stake_games)
-        if not stake_games:
+        bovada_games = cached_bovada_games.get(sport, [])
+        debug_info["bovada_games_count"][sport] = len(bovada_games)
+        if not bovada_games:
             continue
 
-        # Debug: Check what markets Stake games have
-        stake_markets_summary = {}
-        for g in stake_games[:3]:
-            stake_markets_summary[g.home_team] = list(g.markets.keys()) if g.markets else []
-        debug_info[f"{sport}_stake_markets_sample"] = stake_markets_summary
+        # Debug: Check what markets Bovada games have
+        bovada_markets_summary = {}
+        for g in bovada_games[:3]:
+            bovada_markets_summary[g.home_team] = list(g.markets.keys()) if g.markets else []
+        debug_info[f"{sport}_bovada_markets_sample"] = bovada_markets_summary
 
-        stake_games_by_name = {_normalize_name(g.home_team, g.away_team): g for g in stake_games}
+        bovada_games_by_name = {_normalize_name(g.home_team, g.away_team): g for g in bovada_games}
 
         sport_cache = cache.get(sport, {})
         matches = sport_cache.get("matches", [])
@@ -1022,14 +1021,14 @@ def api_debug_comparisons():
             # Get Poly prices from WS
             prices = price_provider.get_all_prices_for_game(game_id)
 
-            # Find matching Stake game
+            # Find matching Bovada game
             match_key = _normalize_name(home_team, away_team)
-            stake_game = stake_games_by_name.get(match_key)
+            bovada_game = bovada_games_by_name.get(match_key)
 
-            if not stake_game:
+            if not bovada_game:
                 debug_info["match_failures"].append({
                     "sport": sport, "game_id": game_id,
-                    "reason": "No Stake game match",
+                    "reason": "No Bovada game match",
                     "cache_key": match_key,
                     "home_team": home_team, "away_team": away_team
                 })
@@ -1048,7 +1047,7 @@ def api_debug_comparisons():
                 continue
 
             # Use the same arb detection logic as the main app (return_all=True for debug)
-            game_arbs = find_arbs(poly_game, stake_game, teams_swapped, return_all=True)
+            game_arbs = find_arbs(poly_game, bovada_game, teams_swapped, return_all=True)
 
             game_comparison = {
                 "game": f"{away_team} @ {home_team}",
@@ -1062,15 +1061,15 @@ def api_debug_comparisons():
                         "profit_pct": round(arb.profit_pct, 2),
                         "poly_side": arb.poly_side,
                         "poly_odds": round(arb.poly_odds, 3),
-                        "stake_side": arb.tp_side,
-                        "stake_odds": round(arb.tp_odds, 3),
+                        "bovada_side": arb.tp_side,
+                        "bovada_odds": round(arb.tp_odds, 3),
                         "implied_sum": round(1/arb.poly_odds + 1/arb.tp_odds, 4),
                     }
                     for arb in game_arbs
                 ],
                 "markets_checked": {
                     "poly": list(poly_game.markets.keys()),
-                    "stake": list(stake_game.markets.keys()),
+                    "bovada": list(bovada_game.markets.keys()),
                 }
             }
 
@@ -1096,14 +1095,14 @@ def api_debug(sport):
 
     # Fetch raw data
     poly_raw = fetch_polymarket(sport_config["polymarket_tag_id"])
-    stake_raw = fetch_stake([sport])
+    bovada_raw = fetch_bovada([sport])
 
     # Parse into games
     poly_games = adapter.parse_polymarket(poly_raw) if poly_raw else []
-    stake_games = adapter.parse_stake(stake_raw, sport) if stake_raw else []
+    bovada_games = adapter.parse_bovada(bovada_raw, sport) if bovada_raw else []
 
     # Match games
-    matched = match_games(poly_games, stake_games, adapter)
+    matched = match_games(poly_games, bovada_games, adapter)
 
     # Build debug output
     debug_data = {
@@ -1120,7 +1119,7 @@ def api_debug(sport):
             }
             for g in poly_games
         ],
-        "stake_parsed": [
+        "bovada_parsed": [
             {
                 "id": g.id,
                 "away": g.away_team,
@@ -1130,15 +1129,15 @@ def api_debug(sport):
                     for k, v in g.markets.items()
                 }
             }
-            for g in stake_games
+            for g in bovada_games
         ],
         "matched_games": [
             {
                 "poly_id": pg.id,
-                "stake_id": sg.id,
+                "bovada_id": bg.id,
                 "display": f"{pg.away_team} @ {pg.home_team}",
             }
-            for pg, sg, _ in matched
+            for pg, bg, _ in matched
         ]
     }
 
@@ -1158,12 +1157,12 @@ if __name__ == "__main__":
     import argparse
     import os
 
-    parser = argparse.ArgumentParser(description='Stake/Polymarket Arb Monitor')
+    parser = argparse.ArgumentParser(description='Bovada/Polymarket Arb Monitor')
     parser.add_argument('--port', type=int, default=int(os.environ.get('PORT', 5000)), help='Port to run on')
     parser.add_argument('--rest', action='store_true', help='Force REST-only mode (no WebSocket)')
     args = parser.parse_args()
 
-    log.info("Stake/Polymarket Arb Monitor starting...")
+    log.info("Bovada/Polymarket Arb Monitor starting...")
     log.info(f"Active sports: {config.ACTIVE_SPORTS}")
 
     # Start Discord bot if configured
@@ -1174,10 +1173,10 @@ if __name__ == "__main__":
         log.info(f"Poll interval: {config.POLL_INTERVAL}s")
         threading.Thread(target=poll_worker, daemon=True).start()
     else:
-        # Default: Event-driven mode (instant Poly updates, Stake cached 60s)
+        # Default: Event-driven mode (instant Poly updates, Bovada cached 60s)
         log.info("Starting in EVENT-DRIVEN mode...")
         log.info(f"  - Polymarket: Instant updates via WebSocket")
-        log.info(f"  - Stake: Cached, refresh every {config.POLL_INTERVAL}s")
+        log.info(f"  - Bovada: Cached, refresh every {config.POLL_INTERVAL}s")
         threading.Thread(target=event_driven_worker, daemon=True).start()
 
     app.run(debug=False, host='0.0.0.0', port=args.port, threaded=True)
